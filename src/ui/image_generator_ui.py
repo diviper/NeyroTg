@@ -106,19 +106,43 @@ class ImageGeneratorUI:
         self.scrollable_frame = ttk.Frame(canvas)
         
         # Конфигурируем скроллинг
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", width=canvas.winfo_reqwidth())
+        def on_frame_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Показываем скроллбар только если контент не помещается
+            if self.scrollable_frame.winfo_reqheight() > canvas.winfo_height():
+                scrollbar.pack(side="right", fill="y")
+            else:
+                scrollbar.pack_forget()
+                
+        self.scrollable_frame.bind("<Configure>", on_frame_configure)
+        
+        # Устанавливаем минимальную ширину для канваса
+        canvas.configure(width=UI_CONFIG['min_width'] - 60)  # Учитываем отступы
+        canvas_frame = canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        
+        # Обновляем ширину окна при изменении размера
+        def on_canvas_configure(e):
+            canvas.itemconfig(canvas_frame, width=e.width)
+            # Проверяем необходимость скроллбара после изменения размера
+            if self.scrollable_frame.winfo_reqheight() > e.height:
+                scrollbar.pack(side="right", fill="y")
+            else:
+                scrollbar.pack_forget()
+                
+        canvas.bind('<Configure>', on_canvas_configure)
+        
+        # Настраиваем скроллбар
         canvas.configure(yscrollcommand=scrollbar.set)
         
         # Размещаем элементы
         canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
         
         # Добавляем скроллинг мышью
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        def on_mousewheel(e):
+            if self.scrollable_frame.winfo_reqheight() > canvas.winfo_height():
+                canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+                
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         # Верхняя панель с заголовком
         self.setup_header()
@@ -138,16 +162,19 @@ class ImageGeneratorUI:
 
     def setup_header(self):
         """Настройка заголовка"""
-        header = ttk.Frame(self.main_container)
+        header = ttk.Frame(self.scrollable_frame)
         header.pack(fill=tk.X, pady=(0, 20))
         
+        # Центрируем заголовок
+        header_container = ttk.Frame(header)
+        header_container.pack(expand=True)
+        
         self.title_label = ttk.Label(
-            header,
+            header_container,
             text="Генератор Изображений",
-            font=('Helvetica', 24, 'bold'),
             style='Header.TLabel'
         )
-        self.title_label.pack()
+        self.title_label.pack(pady=10)
 
     def setup_image_panel(self):
         """Настройка панели изображения"""
@@ -159,13 +186,17 @@ class ImageGeneratorUI:
         )
         self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 20))
         
+        # Контейнер для центрирования
+        image_container = ttk.Frame(self.image_frame)
+        image_container.pack(expand=True, fill=tk.BOTH)
+        
         # Метка для изображения
-        self.image_label = ttk.Label(self.image_frame)
+        self.image_label = ttk.Label(image_container)
         self.image_label.pack(expand=True, fill=tk.BOTH)
         
         # Заглушка "Нет изображения"
         self.no_image_label = ttk.Label(
-            self.image_frame,
+            image_container,
             text="Нет изображения\nНажмите 'Создать изображение'",
             justify=tk.CENTER,
             font=('Helvetica', 12)
@@ -299,10 +330,11 @@ class ImageGeneratorUI:
             ).pack(anchor=tk.W, padx=10, pady=2)
             
         # Кастомный стиль
-        ttk.Label(
+        ttk.Radiobutton(
             self.styles_frame,
-            text="Кастомный стиль:",
-            font=('Helvetica', 10)
+            text="Кастомный стиль",
+            value="custom",
+            variable=self.style_var
         ).pack(anchor=tk.W, padx=10, pady=(10, 2))
         
         self.custom_style_text = tk.Text(
@@ -392,7 +424,16 @@ class ImageGeneratorUI:
             text="✨ Создать изображение",
             command=self.start_generation_thread
         )
-        self.generate_button.pack(fill=tk.X, pady=5)
+        self.generate_button.pack(fill=tk.X, pady=(5, 0))
+
+        # Статус генерации
+        self.status_label = ttk.Label(
+            self.control_buttons_frame,
+            text="",
+            font=('Helvetica', 10),
+            justify=tk.CENTER
+        )
+        self.status_label.pack(fill=tk.X, pady=(5, 10))
 
         # Кнопки навигации
         self.nav_frame = ttk.Frame(self.control_buttons_frame)
@@ -423,13 +464,14 @@ class ImageGeneratorUI:
     def generate_description(self):
         """Улучшение текущего описания"""
         current_text = self.description_text.get(1.0, tk.END).strip()
+        current_style = self.style_var.get()
         
         # Показываем индикатор загрузки
         self.loading_indicator.start(self.root)
         self.status_label.config(text="Улучшаем описание...")
         
         def process_description():
-            improved_description = self.image_service.generate_description(current_text)
+            improved_description = self.image_service.generate_description(current_text, current_style)
             
             def update_ui():
                 self.description_text.delete(1.0, tk.END)
@@ -488,11 +530,9 @@ class ImageGeneratorUI:
         """Настройка нижней панели"""
         self.bottom_frame = ttk.Frame(self.main_container)
         self.bottom_frame.pack(fill=tk.X, pady=(20, 0))
-
-        self.status_label = ttk.Label(self.bottom_frame,
-                                    text="",
-                                    font=('Helvetica', 10))
-        self.status_label.pack(side=tk.LEFT)
+        
+        # Добавляем пустое пространство для отступа
+        ttk.Frame(self.bottom_frame).pack(fill=tk.X, expand=True)
 
     def start_generation_thread(self):
         """Запуск генерации в отдельном потоке"""
