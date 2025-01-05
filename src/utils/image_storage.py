@@ -19,27 +19,39 @@ class ImageStorage:
         else:
             self.history = []
 
-    def save_image(self, image_url, description):
+    def save_image(self, image_url, description, format="png"):
         """Сохранение изображения и информации о нем"""
         try:
             # Загрузка изображения
             response = requests.get(image_url)
             response.raise_for_status()
             
+            # Открываем изображение
+            image = Image.open(BytesIO(response.content))
+            
             # Генерация имени файла
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            image_filename = f'image_{timestamp}.png'
+            image_filename = f'image_{timestamp}.{format}'
             image_path = os.path.join(IMAGES_DIR, image_filename)
             
-            # Сохранение изображения
-            with open(image_path, 'wb') as f:
-                f.write(response.content)
+            # Сохранение изображения в нужном формате
+            if format.lower() == 'jpeg':
+                # Для JPEG конвертируем в RGB и устанавливаем качество
+                if image.mode in ('RGBA', 'LA'):
+                    background = Image.new('RGB', image.size, (255, 255, 255))
+                    background.paste(image, mask=image.split()[-1])
+                    image = background
+                image.save(image_path, 'JPEG', quality=95)
+            else:
+                # Для PNG сохраняем как есть
+                image.save(image_path, 'PNG')
             
             # Добавление в историю
             history_entry = {
                 'timestamp': timestamp,
                 'description': description,
-                'image_path': image_filename
+                'image_path': image_filename,
+                'format': format
             }
             self.history.append(history_entry)
             

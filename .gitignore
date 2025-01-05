@@ -1,11 +1,13 @@
-# Переменные окружения
+# Переменные окружения и конфиги
 .env
+custom_style.txt
 
-# Сгенерированные изображения
+# Сгенерированные изображения и история
 images/
 *.png
 *.jpg
 *.jpeg
+*.json
 
 # Python
 __pycache__/
@@ -15,6 +17,7 @@ __pycache__/
 .venv/
 venv/
 ENV/
+*.pyc
 
 # IDE
 .idea/
@@ -25,6 +28,10 @@ ENV/
 # Системные файлы
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# История генераций
-history.json 
+# Логи и временные файлы
+*.log
+*.tmp
+temp/
+logs/ 
