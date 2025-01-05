@@ -100,11 +100,31 @@ class ImageGeneratorUI:
         self.main_container = ttk.Frame(self.root, padding="20")
         self.main_container.pack(fill=tk.BOTH, expand=True)
         
+        # Создаем канвас и скроллбар
+        canvas = tk.Canvas(self.main_container, bg=UI_CONFIG['bg_color'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = ttk.Frame(canvas)
+        
+        # Конфигурируем скроллинг
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", width=canvas.winfo_reqwidth())
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Размещаем элементы
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Добавляем скроллинг мышью
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
         # Верхняя панель с заголовком
         self.setup_header()
         
         # Основной контент
-        self.content_container = ttk.Frame(self.main_container)
+        self.content_container = ttk.Frame(self.scrollable_frame)
         self.content_container.pack(fill=tk.BOTH, expand=True, pady=20)
         
         # Левая панель (изображение)
@@ -260,14 +280,14 @@ class ImageGeneratorUI:
         self.styles_frame = ttk.LabelFrame(self.right_frame, text="Стиль изображения")
         self.styles_frame.pack(fill=tk.X, pady=(0, 10))
         
+        # Стандартные стили
         self.style_var = tk.StringVar(value="default")
         styles = [
             ("Обычный", "default"),
             ("Рик и Морти", "rick_and_morty"),
             ("Симпсоны", "simpsons"),
             ("Масляная живопись", "oil_painting"),
-            ("Черно-белое", "black_and_white"),
-            ("Кастомный", "custom")
+            ("Черно-белое", "black_and_white")
         ]
         
         for text, value in styles:
@@ -278,11 +298,34 @@ class ImageGeneratorUI:
                 variable=self.style_var
             ).pack(anchor=tk.W, padx=10, pady=2)
             
-        # Кнопка настройки кастомного стиля
+        # Кастомный стиль
+        ttk.Label(
+            self.styles_frame,
+            text="Кастомный стиль:",
+            font=('Helvetica', 10)
+        ).pack(anchor=tk.W, padx=10, pady=(10, 2))
+        
+        self.custom_style_text = tk.Text(
+            self.styles_frame,
+            height=3,
+            wrap=tk.WORD,
+            bg=UI_CONFIG['secondary_bg'],
+            fg=UI_CONFIG['text_color'],
+            insertbackground=UI_CONFIG['text_color'],
+            font=('Helvetica', 10)
+        )
+        self.custom_style_text.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        # Загружаем сохраненный кастомный стиль
+        current_style = self.image_service.style_prompts.get("custom")
+        if current_style:
+            self.custom_style_text.insert(1.0, current_style)
+            
+        # Кнопка сохранения стиля
         ttk.Button(
             self.styles_frame,
-            text="⚙️ Настроить кастомный стиль",
-            command=self.show_custom_style_dialog
+            text="💾 Сохранить стиль",
+            command=self.save_custom_style
         ).pack(anchor=tk.W, padx=10, pady=5)
 
         # Фрейм для формата сохранения
@@ -618,67 +661,14 @@ class ImageGeneratorUI:
             # Даем окну время на инициализацию
             self.root.after(100, lambda: self.show_history_item(self.current_history_index)) 
 
-    def show_custom_style_dialog(self):
-        """Показать диалог настройки кастомного стиля"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Настройка кастомного стиля")
-        dialog.geometry("400x300")
-        dialog.configure(bg=UI_CONFIG['bg_color'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Фрейм для содержимого
-        content = ttk.Frame(dialog)
-        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Метка с инструкцией
-        ttk.Label(
-            content,
-            text="Введите описание стиля:",
-            wraplength=360,
-            justify=tk.LEFT
-        ).pack(anchor=tk.W, pady=(0, 10))
-        
-        # Текстовое поле для стиля
-        style_text = tk.Text(
-            content,
-            height=8,
-            wrap=tk.WORD,
-            bg=UI_CONFIG['secondary_bg'],
-            fg=UI_CONFIG['text_color'],
-            insertbackground=UI_CONFIG['text_color'],
-            font=('Helvetica', 12)
-        )
-        style_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        # Загружаем текущий кастомный стиль, если есть
-        current_style = self.image_service.style_prompts.get("custom")
-        if current_style:
-            style_text.insert(1.0, current_style)
-        
-        def save_style():
-            style_prompt = style_text.get(1.0, tk.END).strip()
-            if style_prompt:
-                if self.image_service.save_custom_style(style_prompt):
-                    messagebox.showinfo("Успех", "Кастомный стиль сохранен")
-                    dialog.destroy()
-                else:
-                    messagebox.showerror("Ошибка", "Не удалось сохранить стиль")
+    def save_custom_style(self):
+        """Сохранение кастомного стиля"""
+        style_prompt = self.custom_style_text.get(1.0, tk.END).strip()
+        if style_prompt:
+            if self.image_service.save_custom_style(style_prompt):
+                messagebox.showinfo("Успех", "Кастомный стиль сохранен")
+                self.style_var.set("custom")  # Автоматически выбираем кастомный стиль
             else:
-                messagebox.showwarning("Внимание", "Введите описание стиля")
-        
-        # Кнопки
-        buttons_frame = ttk.Frame(content)
-        buttons_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Button(
-            buttons_frame,
-            text="Сохранить",
-            command=save_style
-        ).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            buttons_frame,
-            text="Отмена",
-            command=dialog.destroy
-        ).pack(side=tk.LEFT, padx=5) 
+                messagebox.showerror("Ошибка", "Не удалось сохранить стиль")
+        else:
+            messagebox.showwarning("Внимание", "Введите описание стиля")

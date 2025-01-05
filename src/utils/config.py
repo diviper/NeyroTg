@@ -26,21 +26,28 @@ DARK_THEME = {
     'highlight_bg': "#4a4a4a",
     'border_color': "#3E3E3E",
     'error_color': "#FF5252",
-    'success_color': "#4CAF50"
+    'success_color': "#4CAF50",
+    'scrollbar_bg': "#3E3E3E",
+    'scrollbar_fg': "#4a4a4a"
 }
 
 # Конфигурация UI
 UI_CONFIG = {
     'window_title': "NeyroTg - Генератор Изображений",
-    'window_size': "1000x800",
-    'min_width': 900,
-    'min_height': 700,
+    'window_size': "1200x800",
+    'min_width': 1000,
+    'min_height': 800,
     'font_family': 'Helvetica',
     'font_sizes': {
         'title': 24,
         'subtitle': 16,
         'normal': 12,
         'small': 10
+    },
+    'padding': {
+        'small': 5,
+        'normal': 10,
+        'large': 20
     },
     **DARK_THEME  # Используем темную тему по умолчанию
 } 
