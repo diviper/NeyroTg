@@ -71,6 +71,12 @@ class ImageGeneratorUI:
         # Настраиваем UI
         self.setup_ui()
         
+        # Настраиваем контекстное меню
+        self.setup_context_menu()
+        
+        # Настраиваем текстовые поля
+        self.setup_text_fields()
+        
         # Ждем полной инициализации окна перед загрузкой истории
         self.root.after(500, self.delayed_load_history)
 
@@ -379,33 +385,65 @@ class ImageGeneratorUI:
             variable=self.format_var
         ).pack(side=tk.LEFT, padx=10)
 
-        # Текстовое поле описания
+        # Текстовое поле описания с увеличенной высотой
         self.description_frame = ttk.LabelFrame(self.right_frame, text="Описание изображения")
         self.description_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
+        # Создаем фрейм для текстового поля и скроллбара
+        text_container = ttk.Frame(self.description_frame)
+        text_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Текстовое поле с увеличенной высотой
         self.description_text = tk.Text(
-            self.description_frame,
-            height=8,
+            text_container,
+            height=24,  # Высота в строках
+            width=50,   # Ширина в символах
             wrap=tk.WORD,
-            bg="#2E2E2E",
-            fg="white",
+            bg=UI_CONFIG['secondary_bg'],
+            fg=UI_CONFIG['text_color'],
             font=('Helvetica', 12),
-            insertbackground="white",
-            selectbackground="#4a4a4a",
-            selectforeground="white",
+            insertbackground=UI_CONFIG['text_color'],
+            selectbackground=UI_CONFIG['selection_bg'],
+            selectforeground=UI_CONFIG['selection_fg'],
             relief=tk.SUNKEN,
             padx=10,
             pady=10
         )
-        self.description_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.description_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Добавляем скроллбар
+        scrollbar = ttk.Scrollbar(text_container, orient=tk.VERTICAL, command=self.description_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.description_text['yscrollcommand'] = scrollbar.set
+
+        # Настраиваем копирование/вставку
+        self.description_text.bind('<<Copy>>', lambda e: self.copy_text(self.description_text))
+        self.description_text.bind('<<Paste>>', lambda e: self.paste_text(self.description_text))
+        self.description_text.bind('<<Cut>>', lambda e: self.cut_text(self.description_text))
+        
+        # Добавляем стандартные сочетания клавиш
+        self.description_text.bind('<Control-c>', lambda e: self.copy_text(self.description_text))
+        self.description_text.bind('<Control-v>', lambda e: self.paste_text(self.description_text))
+        self.description_text.bind('<Control-x>', lambda e: self.cut_text(self.description_text))
+        self.description_text.bind('<Control-a>', lambda e: self.select_all(self.description_text))
+        
+        # Добавляем контекстное меню
+        self.description_text.bind('<Button-3>', lambda e: self.show_context_menu(e, self.description_text))
 
         # Кнопки для работы с текстом
         self.text_buttons_frame = ttk.Frame(self.right_frame)
         self.text_buttons_frame.pack(fill=tk.X, pady=(0, 10))
 
+        # Кнопка копирования
         ttk.Button(
             self.text_buttons_frame,
-            text="🎲 Сгенерировать описание",
+            text="📋 Копировать",
+            command=lambda: self.copy_text(self.description_text)
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+
+        ttk.Button(
+            self.text_buttons_frame,
+            text="🌍 Сгенерировать описание",
             command=self.generate_description
         ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
 
@@ -546,57 +584,80 @@ class ImageGeneratorUI:
 
     def generate_new(self):
         """Генерация нового изображения"""
-        description = self.description_text.get(1.0, tk.END).strip()
-        
-        # Генерация описания если пользователь не ввел его
-        if not description:
-            description = self.image_service.generate_description("Случайная сцена")
-            self.root.after(0, lambda: self.description_text.insert(1.0, description))
-
-        # Получаем выбранный стиль и формат
-        style = self.style_var.get()
-        format = self.format_var.get()
-
-        # Генерация изображения
-        image_url = self.image_service.generate_image(description, style)
-        
-        if image_url:
-            # Сохранение изображения
-            image_path = self.image_storage.save_image(image_url, description, format)
-            if image_path:
-                self.current_image = Image.open(image_path)  # Сохраняем оригинал для увеличения
-                image = self.current_image.copy()
-                
-                # Подгоняем размер изображения под размер фрейма
-                frame_width = self.image_frame.winfo_width() - 20  # Учитываем отступы
-                frame_height = self.image_frame.winfo_height() - 20
-                
-                # Сохраняем пропорции
-                img_width, img_height = image.size
-                ratio = min(frame_width/img_width, frame_height/img_height)
-                new_width = int(img_width * ratio)
-                new_height = int(img_height * ratio)
-                
-                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                photo = ImageTk.PhotoImage(image)
-                
-                def update_ui():
-                    self.current_history_index = len(self.image_storage.get_history()) - 1
-                    self.no_image_label.place_forget()  # Скрываем заглушку
-                    self.image_label.configure(image=photo)
-                    self.image_label.image = photo
-                    self.loading_indicator.stop()
+        try:
+            description = self.description_text.get(1.0, tk.END).strip()
+            
+            if not description:
+                def show_error():
+                    self.status_label.config(text="Введите описание изображения")
                     self.generate_button.config(state='normal')
-                    self.status_label.config(text="Готово!")
-                    self.update_navigation_buttons()
+                    self.loading_indicator.stop()
+                    messagebox.showwarning("Внимание", "Введите описание изображения")
+                self.root.after(0, show_error)
+                return
+
+            # Получаем выбранный стиль и формат
+            style = self.style_var.get()
+            format = self.format_var.get()
+
+            # Генерация изображения
+            image_url = self.image_service.generate_image(description, style)
+            
+            if image_url:
+                # Сохранение изображения
+                image_path = self.image_storage.save_image(image_url, description, format)
+                if image_path:
+                    self.current_image = Image.open(image_path)
+                    image = self.current_image.copy()
+                    
+                    # Подгоняем размер изображения под размер фрейма
+                    frame_width = self.image_frame.winfo_width() - 20
+                    frame_height = self.image_frame.winfo_height() - 20
+                    
+                    # Сохраняем пропорции
+                    img_width, img_height = image.size
+                    ratio = min(frame_width/img_width, frame_height/img_height)
+                    new_width = int(img_width * ratio)
+                    new_height = int(img_height * ratio)
+                    
+                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(image)
+                    
+                    def update_ui():
+                        self.current_history_index = len(self.image_storage.get_history()) - 1
+                        self.no_image_label.place_forget()
+                        self.image_label.configure(image=photo)
+                        self.image_label.image = photo
+                        self.loading_indicator.stop()
+                        self.generate_button.config(state='normal')
+                        self.status_label.config(text="✅ Изображение создано!")
+                        self.update_navigation_buttons()
+                        # Очищаем статус через 3 секунды
+                        self.root.after(3000, lambda: self.status_label.config(text=""))
+                    
+                    self.root.after(0, update_ui)
+            else:
+                def show_error():
+                    self.status_label.config(text="❌ Ошибка при генерации")
+                    self.generate_button.config(state='normal')
+                    self.loading_indicator.stop()
+                    messagebox.showerror(
+                        "Ошибка",
+                        "Не удалось сгенерировать изображение.\n" +
+                        "Возможные причины:\n" +
+                        "1. Слишком длинное описание\n" +
+                        "2. Запрещенный контент\n" +
+                        "3. Проблемы с подключением\n\n" +
+                        "Попробуйте упростить описание или изменить стиль."
+                    )
                 
-                self.root.after(0, update_ui)
-        else:
+                self.root.after(0, show_error)
+        except Exception as e:
             def show_error():
-                self.status_label.config(text="Ошибка при генерации изображения")
+                self.status_label.config(text="❌ Неизвестная ошибка")
                 self.generate_button.config(state='normal')
                 self.loading_indicator.stop()
-                messagebox.showerror("Ошибка", "Не удалось сгенерировать изображение")
+                messagebox.showerror("Ошибка", f"Произошла ошибка: {str(e)}")
             
             self.root.after(0, show_error)
 
@@ -712,3 +773,79 @@ class ImageGeneratorUI:
                 messagebox.showerror("Ошибка", "Не удалось сохранить стиль")
         else:
             messagebox.showwarning("Внимание", "Введите описание стиля")
+
+    def setup_text_fields(self):
+        """Настройка всех текстовых полей"""
+        # Настраиваем основное поле описания
+        self.description_text.bind('<Control-c>', lambda e: self.copy_text(self.description_text))
+        self.description_text.bind('<Control-v>', lambda e: self.paste_text(self.description_text))
+        self.description_text.bind('<Control-x>', lambda e: self.cut_text(self.description_text))
+        self.description_text.bind('<Control-a>', lambda e: self.select_all(self.description_text))
+        self.description_text.bind('<Button-3>', lambda e: self.show_context_menu(e, self.description_text))
+
+        # Настраиваем поле кастомного стиля
+        self.custom_style_text.bind('<Control-c>', lambda e: self.copy_text(self.custom_style_text))
+        self.custom_style_text.bind('<Control-v>', lambda e: self.paste_text(self.custom_style_text))
+        self.custom_style_text.bind('<Control-x>', lambda e: self.cut_text(self.custom_style_text))
+        self.custom_style_text.bind('<Control-a>', lambda e: self.select_all(self.custom_style_text))
+        self.custom_style_text.bind('<Button-3>', lambda e: self.show_context_menu(e, self.custom_style_text))
+
+    def setup_context_menu(self):
+        """Настройка контекстного меню"""
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="Копировать", command=lambda: self.copy_text(self.focused_widget))
+        self.context_menu.add_command(label="Вставить", command=lambda: self.paste_text(self.focused_widget))
+        self.context_menu.add_command(label="Вырезать", command=lambda: self.cut_text(self.focused_widget))
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Выделить всё", command=lambda: self.select_all(self.focused_widget))
+
+    def show_context_menu(self, event, widget):
+        """Показывает контекстное меню"""
+        self.focused_widget = widget
+        self.context_menu.post(event.x_root, event.y_root)
+
+    def copy_text(self, widget, event=None):
+        """Копирование текста из виджета"""
+        try:
+            if widget.tag_ranges(tk.SEL):
+                text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+            else:
+                text = widget.get(1.0, tk.END).strip()
+            
+            if text:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text)
+        except Exception as e:
+            print(f"Ошибка при копировании: {e}")
+        return 'break'
+
+    def paste_text(self, widget, event=None):
+        """Вставка текста в виджет"""
+        try:
+            text = self.root.clipboard_get()
+            if widget.tag_ranges(tk.SEL):
+                widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+            widget.insert(tk.INSERT, text)
+        except Exception as e:
+            print(f"Ошибка при вставке: {e}")
+        return 'break'
+
+    def cut_text(self, widget, event=None):
+        """Вырезание текста из виджета"""
+        try:
+            if widget.tag_ranges(tk.SEL):
+                self.copy_text(widget)
+                widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+        except Exception as e:
+            print(f"Ошибка при вырезании: {e}")
+        return 'break'
+
+    def select_all(self, widget, event=None):
+        """Выделение всего текста в виджете"""
+        try:
+            widget.tag_add(tk.SEL, "1.0", tk.END)
+            widget.mark_set(tk.INSERT, "1.0")
+            widget.see(tk.INSERT)
+        except Exception as e:
+            print(f"Ошибка при выделении: {e}")
+        return 'break'

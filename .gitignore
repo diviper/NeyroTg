@@ -1,37 +1,38 @@
-# Переменные окружения и конфиги
-.env
-custom_style.txt
+# Виртуальное окружение
+.venv/
+venv/
+env/
 
-# Сгенерированные изображения и история
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Конфигурационные файлы
+.env
+*.ini
+*.cfg
+
+# Логи
+*.log
+
+# Сгенерированные изображения
 images/
 *.png
 *.jpg
 *.jpeg
-*.json
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.Python
-.venv/
-venv/
-ENV/
-*.pyc
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
 
+# Временные файлы
+*.tmp
+*.bak
+*.backup
+
 # Системные файлы
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# Логи и временные файлы
-*.log
-*.tmp
-temp/
-logs/ 
+Thumbs.db 
